@@ -45898,12 +45898,17 @@ window.downloadICS = function(events, filename) {
    TASK #99 / #100 — TRANSITION + ATMOSPHERE WIRING
    ============================================================ */
 
-/* ---------- Cartographic atmosphere: static topographic contours ---------- */
-/* The prior implementation animated ~3.5k line segments every frame and read
-   computed style per frame — both caused noticeable scroll jank and produced
-   a wobbly "flowery" look. This rewrite draws a real topographic-elevation
-   pattern ONCE per resize to an offscreen canvas and then only applies a
-   cheap CSS transform for parallax. Zero per-frame canvas work. */
+/* ---------- Cartographic atmosphere: animated topographic contours ---------- */
+/* Three-layer animation at 15 fps:
+   1. Peak drift — each gaussian peak has a tiny velocity plus an amplitude LFO,
+      so the contour field slowly reshapes like weather over terrain.
+   2. Gleam sweep — every 45–90 s a soft accent-warm radial highlight crosses
+      the viewport over ~4 s, then fades.
+   3. Label breath — elevation numbers pulse opacity on staggered periods and
+      re-sample heightAt() each frame so their values tick as terrain drifts.
+   Guards: paused on document.hidden, disabled on prefers-reduced-motion, and
+   disabled on mobile (innerWidth < 480) to save battery — those clients get
+   the static one-shot render. */
 (function initAtmosphere() {
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const canvas = document.getElementById('atmos');
@@ -45915,6 +45920,15 @@ window.downloadICS = function(events, filename) {
     mouseX: 0, mouseY: 0,
     scrollY: 0, targetScrollY: 0,
     parallaxX: 0, parallaxY: 0, targetParallaxX: 0, targetParallaxY: 0,
+    // Animation state — added for the drift/gleam/label-breath layers.
+    peaks: null,              // mutable peak objects (built once per resize)
+    labelSlots: null,         // mutable label positions with phase offsets
+    gleam: null,              // active gleam sweep (or null when idle)
+    nextGleamAt: 0,           // ms timestamp when the next gleam should trigger
+    lastFrame: 0,             // last RAF timestamp (for dt calc)
+    lastRender: 0,            // last canvas redraw timestamp (for 15 fps throttle)
+    rafId: 0,                 // live RAF handle (0 = not looping)
+    animate: false,           // master flag — set by decideMode() based on gates
   };
 
   // Colors read once per resize / theme change (not every frame).
@@ -45940,20 +45954,34 @@ window.downloadICS = function(events, filename) {
 
   // Procedural heightfield built from a few 2-D gaussians → gives real
   // topographic elevation contours when you sample at evenly-spaced levels
-  // (like a USGS quad map).
+  // (like a USGS quad map). Each peak carries drift velocity + amplitude
+  // LFO state so the field can mutate frame-to-frame.
   function buildPeaks(w, h) {
     const r = mulberry32(20260419);
     const n = 6 + Math.floor(r() * 3);        // 6-8 peaks/basins
     const peaks = [];
     for (let i = 0; i < n; i++) {
+      const ampBase = (r() > 0.35 ? 1 : -0.6) * (0.55 + r() * 0.85);
       peaks.push({
         cx: (0.05 + r() * 0.9) * w,
         cy: (0.05 + r() * 0.9) * h,
-        amp: (r() > 0.35 ? 1 : -0.6) * (0.55 + r() * 0.85),
+        // Current (animated) amp — initialized to the LFO value at t=0, which
+        // equals ampBase since sin(phase) is normalized below.
+        amp: ampBase,
+        ampBase,
         // Anisotropic — stretches to feel like ridgelines, not circles
         sx: (0.12 + r() * 0.22) * Math.min(w, h),
         sy: (0.10 + r() * 0.20) * Math.min(w, h),
         theta: r() * Math.PI,
+        // Drift — gentle random-walk velocity in px/sec. Kept small so peaks
+        // wander organically over tens of seconds rather than streaking.
+        vx: (r() - 0.5) * 8,
+        vy: (r() - 0.5) * 6,
+        // Amplitude LFO — each peak breathes on its own period + phase so the
+        // field ripples asynchronously, never pulsing in lockstep.
+        ampLfoPeriodS: 25 + r() * 50,         // 25–75 seconds per cycle
+        ampLfoPhase: r() * Math.PI * 2,
+        ampLfoDepth: 0.12 + r() * 0.10,       // ±12–22% of ampBase
       });
     }
     return peaks;
@@ -46061,31 +46089,77 @@ window.downloadICS = function(events, filename) {
     ctx.restore();
   }
 
-  // Elevation labels — tiny monospaced numbers placed along index contours.
-  function drawElevationLabels(ctx, w, h, peaks, levels, colors) {
+  // Build 4 persistent label slots — position fixed on (re)size, but the
+  // elevation number re-samples from heightAt() every frame and the opacity
+  // breathes on an independent period per slot.
+  function buildLabelSlots(w, h) {
+    const r = mulberry32(42);
+    const slots = [];
+    for (let k = 0; k < 4; k++) {
+      slots.push({
+        x: (0.40 + r() * 0.55) * w,
+        y: (0.55 + r() * 0.35) * h,
+        // Breath period in seconds + phase offset so labels pulse out of sync.
+        breathPeriodS: 6 + r() * 4,               // 6–10 s
+        breathPhase: r() * Math.PI * 2,
+      });
+    }
+    return slots;
+  }
+
+  // Elevation labels — values re-sampled per frame so they tick with drift,
+  // opacity gently breathes so the hero feels alive without distracting.
+  function drawElevationLabels(ctx, w, h, peaks, slots, colors, tSec) {
     ctx.save();
     ctx.fillStyle = colors.accent;
-    // Halve the label alpha — at 0.62 in light mode they were strong enough to
-    // visually compete with hero subtitle copy; the cartographic atmosphere
-    // should sit behind text, not jostle it.
-    ctx.globalAlpha = colors.alphaLabel * 0.55;
     ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    // Pick ~4 points biased to the lower-middle band, away from the hero
-    // headline + filter bar area in the upper-left where text actually lives.
-    const r = mulberry32(42);
-    for (let k = 0; k < 4; k++) {
-      const x = (0.40 + r() * 0.55) * w;          // shift right of hero headline
-      const y = (0.55 + r() * 0.35) * h;          // sit below filter bar / subtitle
-      const z = heightAt(x, y, peaks);
-      // Convert z (roughly -1..1) into a plausible elevation number
+    const base = colors.alphaLabel * 0.55;
+    for (const s of slots) {
+      // Breath: alpha multiplier in [0.55, 1.0] — never dims to zero, so
+      // a label always stays legible but the field looks like it's breathing.
+      const b = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(2 * Math.PI * tSec / s.breathPeriodS + s.breathPhase));
+      ctx.globalAlpha = base * b;
+      const z = heightAt(s.x, s.y, peaks);
       const elev = Math.round(1000 + z * 800);
-      ctx.fillText(elev + 'm', x, y);
+      ctx.fillText(elev + 'm', s.x, s.y);
     }
     // Corner coordinate marker — elegant, just the survey label
     ctx.globalAlpha = colors.alphaLabel * 1.1;
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
     ctx.fillText('23°N  /  99°W', 24, h - 24);
     ctx.restore();
+  }
+
+  // Gleam sweep — a soft radial highlight that enters from one corner,
+  // crosses the viewport, and fades. Triggered once every 45–90 s.
+  function drawGleam(ctx, w, h, gleam, colors) {
+    if (!gleam) return;
+    // Progress is 0..1 over the whole sweep. Use a sin envelope for the alpha
+    // so the highlight fades in, peaks in the middle, and fades out.
+    const envelope = Math.sin(Math.PI * gleam.progress);
+    if (envelope <= 0.001) return;
+    // Interpolate position from start → end along the sweep vector.
+    const x = gleam.x0 + (gleam.x1 - gleam.x0) * gleam.progress;
+    const y = gleam.y0 + (gleam.y1 - gleam.y0) * gleam.progress;
+    const radius = Math.max(w, h) * 0.55;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    // Peak alpha is 0.35 in light mode, softer in dark to avoid a white hotspot.
+    const peakA = colors.isLight ? 0.35 : 0.22;
+    grad.addColorStop(0,    `rgba(201, 160, 99, ${(peakA * envelope).toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(201, 160, 99, ${(peakA * envelope * 0.35).toFixed(3)})`);
+    grad.addColorStop(1,    'rgba(201, 160, 99, 0)');
+    ctx.save();
+    ctx.globalCompositeOperation = colors.isLight ? 'multiply' : 'screen';
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  // Animation gate — disabled by prefers-reduced-motion OR by narrow viewport
+  // (to save mobile battery). Re-evaluated on every resize so rotating a
+  // tablet into landscape or widening a window lights the animation back up.
+  function decideMode() {
+    state.animate = !reduce && window.innerWidth >= 480;
   }
 
   function resize() {
@@ -46098,32 +46172,119 @@ window.downloadICS = function(events, filename) {
     canvas.style.width  = state.w + 'px';
     canvas.style.height = state.h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw();
+    // (Re)seed peaks + label slots for the new viewport size.
+    state.peaks = buildPeaks(state.w, state.h);
+    state.labelSlots = buildLabelSlots(state.w, state.h);
+    decideMode();
+    if (state.animate) {
+      startLoop();
+    } else {
+      stopLoop();
+      draw(0);                                   // single static render
+    }
   }
 
-  function draw() {
+  // Advance peak drift + LFOs by dt seconds. Peaks bounce off viewport edges
+  // (with a small inset so centers never actually reach the border).
+  function tick(dt, tSec) {
+    if (!state.peaks) return;
+    const insetX = 0.05 * state.w;
+    const insetY = 0.05 * state.h;
+    for (const p of state.peaks) {
+      // Drift — gentle random-walk jitter plus damping so velocity stays bounded.
+      p.vx += (Math.random() - 0.5) * 2.5 * dt;
+      p.vy += (Math.random() - 0.5) * 2.5 * dt;
+      p.vx *= 0.985;
+      p.vy *= 0.985;
+      p.cx += p.vx * dt;
+      p.cy += p.vy * dt;
+      // Edge bounce
+      if (p.cx < insetX) { p.cx = insetX; p.vx = Math.abs(p.vx); }
+      if (p.cx > state.w - insetX) { p.cx = state.w - insetX; p.vx = -Math.abs(p.vx); }
+      if (p.cy < insetY) { p.cy = insetY; p.vy = Math.abs(p.vy); }
+      if (p.cy > state.h - insetY) { p.cy = state.h - insetY; p.vy = -Math.abs(p.vy); }
+      // Amplitude LFO — sinusoidal ±ampLfoDepth of ampBase.
+      const phase = 2 * Math.PI * tSec / p.ampLfoPeriodS + p.ampLfoPhase;
+      p.amp = p.ampBase * (1 + p.ampLfoDepth * Math.sin(phase));
+    }
+    // Gleam scheduling — trigger one, let it run, reset timer.
+    if (!state.gleam && tSec * 1000 >= state.nextGleamAt) {
+      // Random entry from any of the four corners; exit at the opposite.
+      const corners = [
+        [-0.15,  0.10,  1.15,  0.85], [ 1.15, 0.15, -0.15, 0.90],
+        [ 0.10, -0.15,  0.85,  1.15], [ 0.20, 1.15,  0.90, -0.15],
+      ];
+      const c = corners[Math.floor(Math.random() * corners.length)];
+      state.gleam = {
+        progress: 0,
+        durationS: 3.5 + Math.random() * 1.5,     // 3.5–5.0 s
+        x0: c[0] * state.w, y0: c[1] * state.h,
+        x1: c[2] * state.w, y1: c[3] * state.h,
+      };
+    }
+    if (state.gleam) {
+      state.gleam.progress += dt / state.gleam.durationS;
+      if (state.gleam.progress >= 1) {
+        state.gleam = null;
+        state.nextGleamAt = tSec * 1000 + (45000 + Math.random() * 45000);  // 45–90 s
+      }
+    }
+  }
+
+  function loop(ts) {
+    state.rafId = requestAnimationFrame(loop);
+    // Pause on background tabs — saves CPU + battery.
+    if (document.hidden) { state.lastFrame = 0; return; }
+    const now = ts || performance.now();
+    if (!state.lastFrame) state.lastFrame = now;
+    const dt = Math.min(0.1, (now - state.lastFrame) / 1000);   // clamp to 100ms for stability
+    state.lastFrame = now;
+    const tSec = now / 1000;
+    tick(dt, tSec);
+    // 15 fps throttle — the marching-squares pass is the expensive bit; at 15 fps
+    // the motion still reads as smooth for this speed of drift and we leave 3×
+    // frame budget headroom.
+    if (now - state.lastRender >= 65) {
+      state.lastRender = now;
+      draw(tSec);
+    }
+  }
+
+  function startLoop() {
+    if (state.rafId) return;
+    state.lastFrame = 0;
+    state.lastRender = 0;
+    state.nextGleamAt = performance.now() + 6000 + Math.random() * 8000;    // first gleam 6–14 s in
+    state.rafId = requestAnimationFrame(loop);
+  }
+  function stopLoop() {
+    if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = 0; }
+    state.gleam = null;
+  }
+
+  function draw(tSec) {
     const { accent, ink, isLight } = readColors();
     // Light-mode alphas bumped ~2.5x so the topographic field actually reads
     // against a near-white page. The contour ink in light mode is the
     // --text-primary charcoal, so higher alpha reads as legitimate map
     // darkness rather than a faded ghost.
     const colors = {
-      accent, ink,
+      accent, ink, isLight,
       alphaGrid:    isLight ? 0.18 : 0.10,
       alphaMinor:   isLight ? 0.22 : 0.12,
       alphaIndex:   isLight ? 0.44 : 0.26,
       alphaLabel:   isLight ? 0.62 : 0.40,
     };
     ctx.clearRect(0, 0, state.w, state.h);
-    // Render into the full viewport, rebuilding field per resize
-    const peaks = buildPeaks(state.w, state.h);
     // Elevation levels — 18 lines spread across the field's dynamic range
     const levels = [];
     const N = 18;
     for (let i = 0; i < N; i++) levels.push(-1.4 + (i / (N - 1)) * 2.8);
     drawGrid(ctx, state.w, state.h, colors);
-    drawContours(ctx, state.w, state.h, peaks, levels, colors);
-    drawElevationLabels(ctx, state.w, state.h, peaks, levels, colors);
+    drawContours(ctx, state.w, state.h, state.peaks, levels, colors);
+    drawElevationLabels(ctx, state.w, state.h, state.peaks, state.labelSlots, colors, tSec || 0);
+    // Gleam sits on top so it tints contours + labels briefly.
+    drawGleam(ctx, state.w, state.h, state.gleam, colors);
   }
 
   // Subtle CSS-transform parallax (no canvas redraw)
@@ -46152,9 +46313,21 @@ window.downloadICS = function(events, filename) {
       scheduleParallax();
     }, { passive: true });
   }
-  // Re-render when theme flips
-  const themeObs = new MutationObserver(draw);
+  // Re-render when theme flips — if the animation loop is running it'll pick
+  // up the new colors on its next tick, but a one-shot redraw makes the flip
+  // feel instant instead of waiting for the 65ms throttle.
+  const themeObs = new MutationObserver(() => draw(performance.now() / 1000));
   themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // When the tab returns from hidden, reset the dt baseline so drift doesn't
+  // snap-advance by the clamped 100ms and push out the next gleam so it doesn't
+  // fire immediately on return.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.animate) {
+      state.lastFrame = 0;
+      state.nextGleamAt = performance.now() + 8000 + Math.random() * 6000;
+    }
+  });
 
   resize();
 })();
