@@ -863,11 +863,6 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: var(--text-secondary); position: relative; z-index: 2;
 }
 .cf-card .t-row .left  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
-/* Stable record ID chip — muted so the country + entity name still lead. */
-.cf-card .t-row .tid {
-  font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.08em;
-  color: var(--text-tertiary); opacity: 0.78;
-}
 .cf-card .t-row .tier  {
   display: inline-block; padding: 3px 8px; font-size: 11px; font-weight: 700;
   letter-spacing: 0.14em; border: 1.5px solid currentColor; border-radius: 2px;
@@ -1082,11 +1077,6 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .cf-scrub .pos { position: absolute; top: -3px; width: 2px; height: 9px; background: var(--accent-warm); }
 
 .cf-title { text-align: center; margin-top: 22px; padding: 0 24px; }
-.cf-title .cf-title-tid {
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.18em; color: var(--text-tertiary); opacity: 0.72;
-  margin-bottom: 4px;
-}
 .cf-title .name { font-family: var(--font-display); font-size: 24px; font-weight: 500; letter-spacing: -0.02em; }
 .cf-title .meta { margin-top: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); letter-spacing: 0.06em; }
 .cf-title .badge {
@@ -1815,6 +1805,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .modal__head .role {
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--accent-cool); margin-bottom: 10px;
+}
+/* Record ID — file-tab style identifier at the top of the modal, above the name. */
+.modal__head .record-id {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.18em; color: var(--text-tertiary);
+  margin-bottom: 6px;
 }
 .modal__head h2 {
   font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -0.025em;
@@ -43448,7 +43444,7 @@ function buildCover(t, idx) {
     <div class="tile">
       <span class="pip"></span>
       <div class="t-row">
-        <span class="left"><span class="tid">${escapeHtml(t.target_id)}</span> · ${escapeHtml(country)}</span>
+        <span class="left">${escapeHtml(country)}</span>
         <span class="t-row-right">
           <span class="tier">${t.tier}</span>
           <button class="cf-star ${starOn ? 'on' : ''}" data-star="${escapeHtml(t.target_id)}" title="${starOn ? 'Unstar — pin to favorites bundle' : 'Star — pin to favorites bundle'}" aria-label="${starOn ? 'Unstar' : 'Star'}">
@@ -43467,7 +43463,7 @@ function buildCover(t, idx) {
     </div>
     <div class="reflection"><div class="tile">
       <span class="pip"></span>
-      <div class="t-row"><span class="left"><span class="tid">${escapeHtml(t.target_id)}</span> · ${escapeHtml(country)}</span><span class="tier">${t.tier}</span></div>
+      <div class="t-row"><span class="left">${escapeHtml(country)}</span><span class="tier">${t.tier}</span></div>
       <div class="name" style="font-size: ${coverNameSize(nameLines)}px;">${nameLines.map(escapeHtml).join('<br/>')}</div>
     </div></div>`;
 
@@ -43578,7 +43574,6 @@ function updateCfTitle() {
   const badgeCls = (t.audit_flags && t.audit_flags.length) ? 'badge--audit' : (t.tier === 'A' ? 'badge--a' : '');
   const badgeTxt = (t.audit_flags && t.audit_flags.length) ? 'FLAGGED' : TIER_LABELS[t.tier];
   document.getElementById('cfTitle').innerHTML = `
-    <div class="cf-title-tid">${escapeHtml(t.target_id)}</div>
     <div class="name">${escapeHtml(t.entity_name)}</div>
     <div class="meta">${escapeHtml(COUNTRY_NAMES[t.country] || t.country)}${t.region ? ' · ' + escapeHtml(t.region) : ''} · ${t.project_count || 0} projects · ${t.scores.total}/12</div>
     <div class="badge ${badgeCls}">${badgeTxt}</div>`;
@@ -44797,6 +44792,7 @@ function renderModal(t) {
     <span class="modal__close" id="modalClose">×</span>
     <div class="modal__head">
       <div class="role">${escapeHtml(role)}</div>
+      <div class="record-id">${escapeHtml(t.target_id)}</div>
       <h2 id="modalEntityName">${escapeHtml(t.entity_name)}</h2>
       <div class="location">${escapeHtml(countryName)}${t.region ? ' · ' + escapeHtml(t.region) : ''}</div>
       <div class="synopsis">${escapeHtml(t.synopsis || '')}</div>
@@ -45318,52 +45314,6 @@ function briefSharedEvents(selected) {
   rows.sort((a, b) => (eventDateKey(a.e)).localeCompare(eventDateKey(b.e)));
   return rows;
 }
-function briefOutreachSequence(selected, sharedRows) {
-  // Priority: 1) Tier A/B targets first. 2) Target who has NO shared events gets an early individual step.
-  // 3) Shared events in chronological order become "converge at X" steps.
-  // 4) Final step: post-event follow-up.
-  const steps = [];
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Step 1: Pre-warm — highest-score target first
-  if (selected.length) {
-    const lead = selected[0];
-    steps.push({
-      t: `Open with ${escapeHtml(lead.entity_name)}`,
-      d: escapeHtml(lead.bd_angle || lead.icon_angle || 'Lead the brief with the highest-scoring target. Use Icon\u2019s geometric / resilience angle most relevant to their pattern.'),
-      m: `Pre-circuit · target lead`
-    });
-  }
-  // Step 2: individual touches for targets not on shared circuit
-  const coveredIds = new Set();
-  sharedRows.forEach(r => r.hits.forEach(id => coveredIds.add(id)));
-  const orphans = selected.filter(t => !coveredIds.has(t.target_id));
-  orphans.slice(0, 3).forEach(t => {
-    steps.push({
-      t: `Individual approach — ${escapeHtml(t.entity_name)}`,
-      d: escapeHtml(t.warm_path || t.bd_angle || 'No shared circuit event. Schedule a direct introduction via warm path.'),
-      m: `Individual · Tier ${escapeHtml(t.tier || '?')}`
-    });
-  });
-  // Step 3: converge at shared events
-  sharedRows.slice(0, 4).forEach(r => {
-    const when = formatDates(r.e);
-    const where = [r.e.venue, r.e.city, r.e.country].filter(Boolean).join(', ');
-    const who = r.confByHit.map(c => c.name).join(', ');
-    steps.push({
-      t: `Converge at ${escapeHtml(r.e.name)}`,
-      d: `${escapeHtml(who)} map to this event. Use the circuit to compress ${r.hits.length} intros into a single trip.`,
-      m: `${escapeHtml(when)}${where ? ' · ' + escapeHtml(where) : ''}`
-    });
-  });
-  // Step 4: follow-up
-  steps.push({
-    t: `Post-circuit debrief`,
-    d: `Within 7 days of the last event, send a project-specific follow-up (Icon peer-project reference + pilot structuring options). Confirm next site visit or technical review.`,
-    m: `T+7 · capture momentum`
-  });
-  return steps;
-}
 function renderBrief() {
   const box = document.getElementById('briefPaper');
   if (!box) return;
@@ -45386,7 +45336,6 @@ function renderBrief() {
 
   const colsClass = n >= 5 ? 'cols-5' : (n === 4 ? 'cols-4' : (n === 3 ? 'cols-3' : 'cols-2'));
   const shared = briefSharedEvents(picks);
-  const sequence = briefOutreachSequence(picks, shared);
   const countryBreak = Array.from(new Set(picks.map(t => COUNTRY_NAMES[t.country] || t.country))).join(' · ');
   const tierBreak = ['A','B','C','D'].map(x => {
     const k = picks.filter(t => t.tier === x).length;
@@ -45410,16 +45359,7 @@ function renderBrief() {
             <div class="br-count">${r.hits.length} / ${n}</div>
           </div>`;
       }).join('')
-    : `<div class="brief-empty-shared">No single event maps ≥2 of the selected targets. Reach each individually via warm path — see sequence below.</div>`;
-
-  const seqHTML = sequence.map(s => `
-    <div class="brief-seq-item">
-      <div class="brief-seq-body">
-        <div class="t">${s.t}</div>
-        <div class="d">${s.d}</div>
-        <div class="m">${s.m}</div>
-      </div>
-    </div>`).join('');
+    : `<div class="brief-empty-shared">No single event maps ≥2 of the selected targets.</div>`;
 
   box.innerHTML = `
     <div class="brief-eyebrow"><span class="dot"></span>Rolodex briefing · Icon Build hospitality BD</div>
@@ -45438,10 +45378,7 @@ function renderBrief() {
     <div class="brief-section-h" style="margin-top: 28px;">Shared circuit — events where 2+ selected targets converge</div>
     <div class="brief-shared">${sharedHTML}</div>
 
-    <div class="brief-section-h" style="margin-top: 28px;">Suggested outreach sequence</div>
-    <div class="brief-seq">${seqHTML}</div>
-
-    <div class="brief-footnote">Generated ${escapeHtml(stamp)} · Rolodex v1.2 · Internal use only</div>
+    <div class="brief-footnote">Generated ${escapeHtml(stamp)} · Rolodex v1.2</div>
   `;
 }
 
@@ -46248,8 +46185,6 @@ window.downloadICS = function(events, filename) {
       cards.forEach((c, i) => c.style.setProperty('--stagger', i));
       const rows = document.querySelectorAll('#view-brief .brief-shared-row');
       rows.forEach((r, i) => r.style.setProperty('--stagger', i + cards.length));
-      const seq = document.querySelectorAll('#view-brief .brief-seq-item');
-      seq.forEach((s, i) => s.style.setProperty('--stagger', i + cards.length + rows.length));
     });
   };
 })();
