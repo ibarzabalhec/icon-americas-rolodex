@@ -1184,7 +1184,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .rolodex-hero-count .rhc__label {
   position: absolute;
   top: -10px;
-  left: 2px;
+  right: 0;
+  left: auto;
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 500;
@@ -1192,6 +1193,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   text-transform: uppercase;
   color: var(--text-tertiary);
   opacity: 0.65;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .rolodex-hero-count.is-filtered {
   color: var(--accent-warm);
@@ -1215,8 +1218,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   100% { transform: scale(1.00); }
 }
 @media (max-width: 720px) {
-  .rolodex-hero-count { font-size: 28px; top: 10px; right: 12px; }
-  .rolodex-hero-count .rhc__label { font-size: 8px; top: -8px; }
+  .rolodex-hero-count { font-size: 26px; top: 8px; right: 10px; max-width: calc(100vw - 20px); }
+  .rolodex-hero-count .rhc__label { font-size: 8px; top: -7px; letter-spacing: 0.14em; }
+}
+@media (max-width: 480px) {
+  .rolodex-hero-count { font-size: 22px; top: 6px; right: 8px; }
+  .rolodex-hero-count .rhc__label { font-size: 7.5px; letter-spacing: 0.12em; top: -6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rolodex-hero-count, .rolodex-hero-count.is-pulsing { animation: none; transition: color 120ms; }
@@ -42310,6 +42317,27 @@ const DATA = JSON.parse(document.getElementById('rolodex-data').textContent);
 const T = DATA.targets;
 const E = DATA.events;
 
+/* Recompute aggregate stats from the live targets array on every boot.
+   The precomputed DATA.stats / DATA.tier_counts / DATA.country_counts blob
+   ships from the upstream stats builder, which has historically lagged the
+   targets array (records added via tier_override pass after the build).
+   Deriving these at render time guarantees the home-page tier cells, the
+   country chips, and the rolodex hero counter all sum to the same total. */
+(function rehydrateAggregates() {
+  const tc = { A: 0, B: 0, C: 0, D: 0 };
+  const cc = {};
+  for (const t of T) {
+    if (t.tier && tc[t.tier] != null) tc[t.tier]++;
+    if (t.country) cc[t.country] = (cc[t.country] || 0) + 1;
+  }
+  DATA.tier_counts = tc;
+  DATA.country_counts = cc;
+  DATA.stats = Object.assign({}, DATA.stats || {}, {
+    total_targets: T.length,
+    tier_a: tc.A, tier_b: tc.B, tier_c: tc.C, tier_d: tc.D,
+  });
+})();
+
 const COUNTRY_NAMES = {
   MX: 'Mexico', CR: 'Costa Rica', CO: 'Colombia', BR: 'Brazil', UY: 'Uruguay',
   AR: 'Argentina', CL: 'Chile', PA: 'Panama', DO: 'Dominican Republic',
@@ -44289,7 +44317,10 @@ function buildStyledSheet(headers, rows, meta) {
    scope: filtered chips → "Filtered: ..."; explicit batch selection → "Selected
    targets (N)"; otherwise → "All targets". */
 function _buildExportMeta(scope, pool) {
-  const today = new Date().toISOString().slice(0, 10);
+  // Local-date stamp (avoid UTC drift that puts the wrong date on the export
+  // when the user is west of UTC late in their day).
+  const _d = new Date();
+  const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   const title = 'ICON Hospitality BD Rolodex — ' + today;
   let subtitle;
   if (scope === 'selected') {
@@ -44378,7 +44409,9 @@ function downloadCSV(filename, headers, rows) {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
 }
 function today_() {
-  return new Date().toISOString().slice(0,10).replace(/-/g,'');
+  // Local-date YYYYMMDD for filename stamps — avoids UTC drift on west-of-UTC users.
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 }
 /* Legacy shim: some older call sites may still reference exportTargetsCSV —
  * route them through the styled runner with CSV format + lean default cols. */
@@ -45320,7 +45353,9 @@ function renderBrief() {
   const picks = briefSelection();
   const n = picks.length;
   const now = new Date();
-  const stamp = now.toISOString().slice(0, 10);
+  // Local-date stamp — UTC slice would render tomorrow's date for users
+  // west of UTC late in their day.
+  const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   if (!n) {
     box.innerHTML = `
@@ -46029,13 +46064,17 @@ window.downloadICS = function(events, filename) {
   function drawElevationLabels(ctx, w, h, peaks, levels, colors) {
     ctx.save();
     ctx.fillStyle = colors.accent;
-    ctx.globalAlpha = colors.alphaLabel;
+    // Halve the label alpha — at 0.62 in light mode they were strong enough to
+    // visually compete with hero subtitle copy; the cartographic atmosphere
+    // should sit behind text, not jostle it.
+    ctx.globalAlpha = colors.alphaLabel * 0.55;
     ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    // Pick ~4 points away from edges and label with the nearest-index elevation
+    // Pick ~4 points biased to the lower-middle band, away from the hero
+    // headline + filter bar area in the upper-left where text actually lives.
     const r = mulberry32(42);
     for (let k = 0; k < 4; k++) {
-      const x = (0.15 + r() * 0.70) * w;
-      const y = (0.20 + r() * 0.60) * h;
+      const x = (0.40 + r() * 0.55) * w;          // shift right of hero headline
+      const y = (0.55 + r() * 0.35) * h;          // sit below filter bar / subtitle
       const z = heightAt(x, y, peaks);
       // Convert z (roughly -1..1) into a plausible elevation number
       const elev = Math.round(1000 + z * 800);
