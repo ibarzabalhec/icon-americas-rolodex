@@ -3051,7 +3051,9 @@ html[data-theme="light"] .cf-card.is-focused .tile {
         <div class="filter-meta" id="filter-meta"></div>
       </div>
 
-      <div class="geo-nav" id="geoNav">
+      <!-- Jump-to region pills retired 2026-04-23 — duplicated the Country chip
+           row and added visual noise without a distinct affordance. -->
+      <div class="geo-nav" id="geoNav" style="display:none;">
         <span class="geo-nav__label">Jump to</span>
         <div id="geoPills" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
       </div>
@@ -42457,8 +42459,14 @@ function saveEventFilters(f) {
   } catch {}
 }
 function loadEventsCollapsed() {
-  try { return localStorage.getItem(EVENTS_COLLAPSED_KEY) === '1'; }
-  catch { return false; }
+  // Default behavior: collapsed for first-time visitors. Once the user
+  // explicitly expands or collapses, persist that preference.
+  try {
+    const v = localStorage.getItem(EVENTS_COLLAPSED_KEY);
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch {}
+  return true;
 }
 function saveEventsCollapsed(b) {
   try { localStorage.setItem(EVENTS_COLLAPSED_KEY, b ? '1' : '0'); } catch {}
@@ -42719,14 +42727,13 @@ function applyHash() {
     if (vm === 'list' || vm === 'grid') { state.viewMode = vm; saveViewMode(vm); }
   }
   renderAll();
-  // On initial load / direct deep-link to a non-home view, land at the top of
-  // that view's section rather than showing the home hero first.
+  // On initial load / direct deep-link to a non-home view, scroll the page to
+  // the top so the sticky nav sits flush at the viewport top and the view's
+  // own header is fully visible underneath. Using scrollIntoView here pushed
+  // section content under the sticky nav.
   if (state.view && state.view !== 'home') {
     requestAnimationFrame(() => {
-      const target = document.getElementById('view-' + state.view);
-      if (target && typeof target.scrollIntoView === 'function') {
-        target.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
     });
   }
 }
@@ -42762,21 +42769,13 @@ function navTo(v) {
   state.view = v; state.targetId = null; closeModal(); pushURL(); renderAll();
   // close mobile menu on nav
   const nav = document.getElementById('nav'); if (nav) nav.classList.remove('menu-open');
-  // Auto-scroll past the hero when navigating to a non-home view, so the
-  // sticky filter bar / events grid / brief lands at the top of the viewport
-  // instead of forcing the user to scroll past the home hero first.
-  if (v !== 'home') {
-    requestAnimationFrame(() => {
-      const target = document.getElementById('view-' + v);
-      if (target && typeof target.scrollIntoView === 'function') {
-        target.scrollIntoView({ behavior: 'auto', block: 'start' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'auto' });
-      }
-    });
-  } else {
-    window.scrollTo({ top: 0, behavior: 'auto' });
-  }
+  // Always scroll the page to its absolute top on a route change. Using
+  // scrollIntoView({block:'start'}) on the target section pushed the section
+  // top under the sticky nav, which made first-time visitors feel like the
+  // top bar had disappeared — reported on the Events tab. window.scrollTo(0,0)
+  // keeps the sticky nav at viewport top and lands the new view directly
+  // beneath it, regardless of which section we came from.
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 document.querySelectorAll('.nav__link, [data-route]').forEach(a => a.addEventListener('click', e => {
   if (!a.dataset.route) return;
@@ -43355,6 +43354,45 @@ function updateControlsHeader(activeCount, shownCount) {
   } else {
     if (badge) { badge.textContent = ''; badge.classList.remove('show'); }
     if (clearBtn) clearBtn.classList.remove('show');
+  }
+
+  // Build a compact summary line for the collapsed head — tells the user at a
+  // glance what's filtering without having to expand. e.g. "Tier A · Mexico"
+  // or "Tier A · Mexico · 2 more". Populated only on the collapsed state via
+  // CSS rule .rolodex-controls.is-collapsed .rc-toggle__summary { display:inline-block }.
+  if (summary) {
+    if (activeCount === 0) {
+      summary.textContent = '';
+    } else {
+      const bits = [];
+      if (state.bundle) {
+        const b = (typeof BUNDLES !== 'undefined' && Array.isArray(BUNDLES))
+          ? BUNDLES.find(x => x.id === state.bundle) : null;
+        bits.push(b ? b.label : state.bundle);
+      }
+      if (state.tiers && state.tiers.size) {
+        bits.push(Array.from(state.tiers).map(t => 'Tier ' + t).join(' · '));
+      }
+      if (state.countries && state.countries.size) {
+        bits.push(Array.from(state.countries).map(c => COUNTRY_NAMES[c] || c).join(' · '));
+      }
+      if (state.types && state.types.size) {
+        const typeLabel = (typeof ENTITY_TYPE_LABELS === 'object' && state.types.size === 1)
+          ? (ENTITY_TYPE_LABELS[Array.from(state.types)[0]] || Array.from(state.types)[0])
+          : (state.types.size + ' types');
+        bits.push(typeLabel);
+      }
+      if (state.geoRegion) bits.push(state.geoRegion);
+      if (state.search) bits.push('"' + state.search + '"');
+      // Trim to the first three bits for at-a-glance density; if more, surface
+      // an "+N more" hint so the user knows there's depth they can expand to see.
+      if (bits.length > 3) {
+        const more = bits.length - 3;
+        summary.textContent = '· ' + bits.slice(0, 3).join(' · ') + ' · +' + more + ' more';
+      } else {
+        summary.textContent = '· ' + bits.join(' · ');
+      }
+    }
   }
 
   // Always-visible count pill: "X of Y" — surfaces total in scope whether
@@ -44007,16 +44045,21 @@ document.querySelectorAll('.view-toggle__btn').forEach(b => b.addEventListener('
   if (!rc || !toggle) return;
 
   const LS_KEY = 'icon.rolodex.controlsCollapsed';
-  const isMobile = () => !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
 
-  // Read persisted state; default: collapsed on mobile, expanded on desktop
+  // Default behavior: collapsed for everyone — first-time desktop visitors
+  // were reporting the expanded filter wall as overwhelming. Auto-expand if
+  // the URL carries active filters AND the user has no stored preference,
+  // so a deep-linked filtered state still surfaces what's filtering.
   function initialCollapsed() {
     try {
       const stored = localStorage.getItem(LS_KEY);
       if (stored === '1') return true;
       if (stored === '0') return false;
     } catch (e) { /* ignore */ }
-    return isMobile();
+    // No persisted preference → collapsed by default unless URL has filters.
+    const params = new URLSearchParams(location.hash.split('?')[1] || '');
+    const hasUrlFilters = ['country','tier','type','bundle','search','geo'].some(k => params.get(k));
+    return !hasUrlFilters;
   }
   function applyCollapsed(collapsed) {
     rc.classList.toggle('is-collapsed', !!collapsed);
