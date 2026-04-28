@@ -2667,42 +2667,109 @@ body.event-detail-open { overflow: hidden; }
   .modal-backdrop::after { content: "Rolodex v1.2 · Icon Build hospitality BD · April 2026"; display: block; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #555; margin: 20px 0; }
   @page { margin: 14mm 12mm; }
 
-  /* ----- Brief print density override -----
-     Default screen-mobile breakpoint @max-width:900px collapses cols-3/4/5
-     down to 2 columns, and Letter paper at 96dpi renders at ~816px, which
-     means print also got squashed to 2-up — leaving 60% of every page blank.
-     This block restores a real print grid (3 columns by default) and
-     compacts card padding/typography so 4–9 cards land per page instead
-     of 2. */
+  /* ----- Brief print: horizontal card layout -----
+     Default screen layout stacks card content vertically (tier, name, sub,
+     scores, pattern, BD angle, principals). On Letter at 96dpi the screen
+     mobile breakpoint forced 2 columns of vertical cards = 2 cards/page +
+     huge negative space. This block reflows each card as a single full-width
+     ROW with three internal columns:
+       Col 1: tier badge + entity name + sub + scores strip
+       Col 2: pattern paragraph
+       Col 3: BD angle + principals
+     Cards stack one-per-row so 3 land on every page after the header. Each
+     card's children get explicit grid placement to override their natural
+     source order. */
+
+  /* The outer grid becomes a single-column flex stack */
   #view-brief .brief-grid,
   #view-brief .brief-grid.cols-2,
   #view-brief .brief-grid.cols-3,
   #view-brief .brief-grid.cols-4,
   #view-brief .brief-grid.cols-5 {
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 8mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4mm !important;
   }
-  /* Two-target briefs read better as a side-by-side spread */
-  #view-brief .brief-grid.cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
 
-  /* Compact card sizing for print — shrink typography, tighten padding,
-     and let scores slot into a single row of 4 small cells. */
+  /* Each card: 3-column internal grid */
   #view-brief .brief-card {
-    padding: 10px 10px 10px !important;
-    font-size: 9.5pt !important;
+    display: grid !important;
+    grid-template-columns: 50mm 1fr 1fr !important;
+    grid-template-rows: auto auto auto auto !important;
+    column-gap: 7mm !important;
+    row-gap: 0 !important;
+    padding: 5mm 6mm !important;
+    page-break-inside: avoid !important;
   }
-  #view-brief .brief-card .bc-name { font-size: 11.5pt !important; line-height: 1.18 !important; margin-right: 38px !important; }
-  #view-brief .brief-card .bc-sub  { font-size: 7pt !important; margin-top: 3px !important; }
-  #view-brief .brief-card .bc-tier { font-size: 8pt !important; padding: 2px 6px !important; top: 7px !important; right: 7px !important; }
-  #view-brief .brief-card .bc-scores { grid-template-columns: repeat(4, 1fr) !important; gap: 0 !important; margin-top: 7px !important; }
-  #view-brief .brief-card .bc-scores .s { padding: 3px 5px !important; border-right: 1px solid #999 !important; }
-  #view-brief .brief-card .bc-scores .s:last-child { border-right: none !important; }
-  #view-brief .brief-card .bc-scores .s .k { font-size: 6pt !important; letter-spacing: 0.10em !important; }
-  #view-brief .brief-card .bc-scores .s .v { font-size: 11pt !important; margin-top: 0 !important; }
-  #view-brief .brief-card .bc-pat,
-  #view-brief .brief-card .bc-ang   { font-size: 8.5pt !important; line-height: 1.32 !important; margin-top: 6px !important; }
-  #view-brief .brief-card .bc-ang b { font-size: 6.5pt !important; }
-  #view-brief .brief-card .bc-people { font-size: 8pt !important; line-height: 1.32 !important; margin-top: 7px !important; }
+
+  /* Column 1: identity stack */
+  #view-brief .brief-card > .bc-tier {
+    position: static !important;
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    justify-self: start !important;
+    align-self: start !important;
+    font-size: 7.5pt !important;
+    padding: 2px 7px !important;
+    margin-bottom: 3px !important;
+  }
+  #view-brief .brief-card > .bc-name {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    margin-right: 0 !important;
+    font-size: 11.5pt !important;
+    line-height: 1.16 !important;
+  }
+  #view-brief .brief-card > .bc-sub {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    font-size: 6.5pt !important;
+    margin-top: 2px !important;
+    line-height: 1.3 !important;
+  }
+  #view-brief .brief-card > .bc-scores {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 0 !important;
+    margin-top: 5px !important;
+    align-self: end !important;
+  }
+  #view-brief .brief-card > .bc-scores .s {
+    padding: 3px 4px !important;
+    border-right: 1px solid #999 !important;
+  }
+  #view-brief .brief-card > .bc-scores .s:last-child { border-right: none !important; }
+  #view-brief .brief-card > .bc-scores .s .k { font-size: 5.5pt !important; letter-spacing: 0.10em !important; }
+  #view-brief .brief-card > .bc-scores .s .v { font-size: 10.5pt !important; margin-top: 0 !important; line-height: 1 !important; }
+
+  /* Column 2: pattern paragraph spans the full card height */
+  #view-brief .brief-card > .bc-pat {
+    grid-column: 2 !important;
+    grid-row: 1 / span 4 !important;
+    margin-top: 0 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.32 !important;
+    align-self: start !important;
+  }
+
+  /* Column 3: BD angle + principals stacked top→bottom */
+  #view-brief .brief-card > .bc-ang {
+    grid-column: 3 !important;
+    grid-row: 1 / span 2 !important;
+    margin-top: 0 !important;
+    font-size: 8pt !important;
+    line-height: 1.32 !important;
+  }
+  #view-brief .brief-card > .bc-ang b { font-size: 6.5pt !important; }
+  #view-brief .brief-card > .bc-people {
+    grid-column: 3 !important;
+    grid-row: 3 / span 2 !important;
+    margin-top: 3mm !important;
+    font-size: 7.5pt !important;
+    line-height: 1.32 !important;
+    align-self: end !important;
+  }
 
   /* Tighter section headers + meta rows so the page header doesn't push the
      first card row down by 2 inches. */
