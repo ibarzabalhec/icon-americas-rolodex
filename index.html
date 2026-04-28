@@ -2666,6 +2666,51 @@ body.event-detail-open { overflow: hidden; }
   #view-brief .brief-shared-row, #view-brief .brief-card { page-break-inside: avoid; }
   .modal-backdrop::after { content: "Rolodex v1.2 · Icon Build hospitality BD · April 2026"; display: block; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #555; margin: 20px 0; }
   @page { margin: 14mm 12mm; }
+
+  /* ----- Brief print density override -----
+     Default screen-mobile breakpoint @max-width:900px collapses cols-3/4/5
+     down to 2 columns, and Letter paper at 96dpi renders at ~816px, which
+     means print also got squashed to 2-up — leaving 60% of every page blank.
+     This block restores a real print grid (3 columns by default) and
+     compacts card padding/typography so 4–9 cards land per page instead
+     of 2. */
+  #view-brief .brief-grid,
+  #view-brief .brief-grid.cols-2,
+  #view-brief .brief-grid.cols-3,
+  #view-brief .brief-grid.cols-4,
+  #view-brief .brief-grid.cols-5 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8mm !important;
+  }
+  /* Two-target briefs read better as a side-by-side spread */
+  #view-brief .brief-grid.cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Compact card sizing for print — shrink typography, tighten padding,
+     and let scores slot into a single row of 4 small cells. */
+  #view-brief .brief-card {
+    padding: 10px 10px 10px !important;
+    font-size: 9.5pt !important;
+  }
+  #view-brief .brief-card .bc-name { font-size: 11.5pt !important; line-height: 1.18 !important; margin-right: 38px !important; }
+  #view-brief .brief-card .bc-sub  { font-size: 7pt !important; margin-top: 3px !important; }
+  #view-brief .brief-card .bc-tier { font-size: 8pt !important; padding: 2px 6px !important; top: 7px !important; right: 7px !important; }
+  #view-brief .brief-card .bc-scores { grid-template-columns: repeat(4, 1fr) !important; gap: 0 !important; margin-top: 7px !important; }
+  #view-brief .brief-card .bc-scores .s { padding: 3px 5px !important; border-right: 1px solid #999 !important; }
+  #view-brief .brief-card .bc-scores .s:last-child { border-right: none !important; }
+  #view-brief .brief-card .bc-scores .s .k { font-size: 6pt !important; letter-spacing: 0.10em !important; }
+  #view-brief .brief-card .bc-scores .s .v { font-size: 11pt !important; margin-top: 0 !important; }
+  #view-brief .brief-card .bc-pat,
+  #view-brief .brief-card .bc-ang   { font-size: 8.5pt !important; line-height: 1.32 !important; margin-top: 6px !important; }
+  #view-brief .brief-card .bc-ang b { font-size: 6.5pt !important; }
+  #view-brief .brief-card .bc-people { font-size: 8pt !important; line-height: 1.32 !important; margin-top: 7px !important; }
+
+  /* Tighter section headers + meta rows so the page header doesn't push the
+     first card row down by 2 inches. */
+  #view-brief .brief-paper h1 { font-size: 18pt !important; margin: 0 !important; line-height: 1.1 !important; }
+  #view-brief .brief-paper .brief-eyebrow { font-size: 7.5pt !important; margin-bottom: 4px !important; }
+  #view-brief .brief-paper .brief-meta    { font-size: 8pt !important; margin-top: 6px !important; gap: 14px !important; }
+  #view-brief hr.brief-rule { margin: 10px 0 12px !important; }
+  #view-brief .brief-section-h { font-size: 8pt !important; margin-top: 0 !important; padding-bottom: 4px !important; }
 }
 
 /* ============================================================
@@ -42672,8 +42717,8 @@ const state = {
 // to toggle all its constituent countries on/off; click its expand chevron
 // to inline-show the individual country pills underneath.
 const COUNTRY_GROUPS = [
-  { id: 'MX',     label: 'Mexico',          countries: ['MX'],           standalone: true },
   { id: 'US',     label: 'United States',   countries: ['US'],           standalone: true },
+  { id: 'MX',     label: 'Mexico',          countries: ['MX'],           standalone: true },
   { id: 'BR',     label: 'Brazil',          countries: ['BR'],           standalone: true },
   { id: 'CA',     label: 'Canada',          countries: ['CA'],           standalone: true },
   { id: 'CARIB',  label: 'Caribbean',
@@ -45561,9 +45606,9 @@ function briefCardHTML(t) {
       <div class="bc-sub">${escapeHtml(role)}${where ? ' · ' + escapeHtml(where) : ''}</div>
       <div class="bc-scores">
         <div class="s t"><div class="k">Total</div><div class="v">${s.total ?? '—'}</div></div>
-        <div class="s"><div class="k">Geom</div><div class="v">${s.geometry ?? '—'}</div></div>
-        <div class="s"><div class="k">Res</div><div class="v">${s.resilience ?? '—'}</div></div>
-        <div class="s"><div class="k">Cap</div><div class="v">${s.capital ?? '—'}</div></div>
+        <div class="s"><div class="k">Geom</div><div class="v">${s.geometry_fit ?? '—'}</div></div>
+        <div class="s"><div class="k">Res</div><div class="v">${s.resilience_fit ?? '—'}</div></div>
+        <div class="s"><div class="k">Cap</div><div class="v">${s.capital_sophistication ?? '—'}</div></div>
       </div>
       ${pattern ? `<div class="bc-pat">${escapeHtml(pattern)}</div>` : ''}
       ${bd ? `<div class="bc-ang"><b>BD angle</b>${escapeHtml(bd)}</div>` : ''}
