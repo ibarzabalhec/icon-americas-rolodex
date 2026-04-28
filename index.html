@@ -2086,6 +2086,19 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .btn:hover { border-color: var(--accent-warm); color: var(--accent-warm); transform: translateY(-1px); }
 .btn.primary { border-color: var(--accent-warm); color: var(--accent-warm); }
 .btn.primary:hover { background: var(--accent-warm); color: var(--bg-primary); }
+/* Engaged-state styling for toggle buttons (e.g. "View selected" while the
+   filter-to-batched mode is active). Warm fill + soft inner glow so the
+   user reads it as a pressed affordance, not just a hover. */
+.btn.is-active,
+.batch-bar button.is-active {
+  background: var(--accent-warm-soft);
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
+  box-shadow: inset 0 0 0 1px rgba(201,160,99,0.25),
+              0 0 12px rgba(201,160,99,0.18);
+}
+.btn.is-active:hover,
+.batch-bar button.is-active:hover { background: var(--accent-warm); color: var(--bg-primary); }
 /* Export buttons — subtle type affordance so CSV / Excel / ICS are visually
  * distinguishable without adding copy. The unified "Export…" buttons get the
  * grid glyph; per-format ICS buttons get the calendar glyph. */
@@ -3331,6 +3344,7 @@ html[data-theme="light"] .cf-card.is-focused .tile {
           </div>
         </div>
         <div style="display: flex; gap: 8px;">
+          <button class="btn" id="viewSelected" title="Show only targets you've selected — toggles between filtered view and all">View selected</button>
           <button class="btn" id="selectAll">Select filtered</button>
           <button class="btn" id="exportOpenFiltered" title="Export current filter + search (CSV or Excel, custom columns)">Export…</button>
         </div>
@@ -3473,6 +3487,7 @@ html[data-theme="light"] .cf-card.is-focused .tile {
 <!-- ========= BATCH BAR ========= -->
 <div class="batch-bar" id="batchBar">
   <span><span class="count" id="batchCount">0</span> selected</span>
+  <button id="batchView" title="Filter the rolodex to show only the targets you've selected">View only</button>
   <button id="batchBrief">Generate brief</button>
   <button id="batchExport">Export…</button>
   <span class="clear" id="batchClear">CLEAR</span>
@@ -42776,6 +42791,7 @@ const state = {
   bundle: null,              // active bundle id (e.g. 'a_tier', 'starred', 'mexico_top')
   geoRegion: null,           // active geography group ('MX','US','CA','BR','SA','CARIB','CENTRAL')
   countryGroupsExpanded: new Set(), // ids of regional country groups currently expanded inline
+  viewSelectedOnly: false,   // when true, rolodex filters to only the batched targets
 };
 
 // --- Country regional grouping for the Country filter row -------------------
@@ -42980,6 +42996,7 @@ function applyHash() {
     const vm = params.get('vmode');
     if (vm === 'list' || vm === 'grid') { state.viewMode = vm; saveViewMode(vm); }
   }
+  state.viewSelectedOnly = params.get('selonly') === '1';
   renderAll();
   // On initial load / direct deep-link to a non-home view, scroll the page to
   // the top so the sticky nav sits flush at the viewport top and the view's
@@ -43014,6 +43031,7 @@ function pushURL() {
   if (state.geoRegion)       p.set('geo',    state.geoRegion);
   if (state.viewMode === 'list') p.set('vmode', 'list');
   if (state.pinnedEventId)   p.set('epin', state.pinnedEventId);
+  if (state.viewSelectedOnly) p.set('selonly', '1');
   const qs = p.toString();
   const h = '#/' + state.view + (qs ? '?' + qs : '');
   if (location.hash !== h) history.replaceState(null, '', h);
@@ -43082,6 +43100,13 @@ function initMobileNav() {
 function filtered() {
   // Brokers are now part of the main Rolodex — filter by type chip "Broker" to isolate.
   let arr = T.slice();
+  // "View selected only" — narrows the rolodex to just the batched targets so a
+  // user can sanity-check their selection before generating a brief / export.
+  // Auto-disengages if there's nothing selected, otherwise it'd render an empty
+  // grid for no apparent reason.
+  if (state.viewSelectedOnly && state.batch && state.batch.size) {
+    arr = arr.filter(t => state.batch.has(t.target_id));
+  }
   // Event-pinned subset (cross-section nav from → N targets chip).
   if (state.pinnedEventId) {
     const pe = E.find(x => x.event_id === state.pinnedEventId);
@@ -44375,9 +44400,48 @@ function updateBatchBar() {
   const c = state.batch.size;
   document.getElementById('batchCount').textContent = c;
   bar.classList.toggle('show', c > 0);
+  // Reflect View-only state on the batch-bar button + the sort-row twin
+  const vBtn = document.getElementById('batchView');
+  const vSort = document.getElementById('viewSelected');
+  const isOn = !!state.viewSelectedOnly && c > 0;
+  if (vBtn) {
+    vBtn.classList.toggle('is-active', isOn);
+    vBtn.textContent = isOn ? 'View all' : 'View only';
+  }
+  if (vSort) {
+    vSort.classList.toggle('is-active', isOn);
+    vSort.textContent = isOn ? 'Viewing selected · clear' : 'View selected';
+    // Disable when nothing is selected so the affordance reads as inactive
+    vSort.disabled = c === 0;
+    vSort.style.opacity = c === 0 ? '0.4' : '';
+    vSort.style.cursor = c === 0 ? 'not-allowed' : '';
+  }
+}
+// Toggle the "View selected only" mode. Lives on both the batch-bar button
+// and a twin in the sort row so it's reachable whether the bar is in view
+// or not. Persisted to URL via pushURL.
+function toggleViewSelectedOnly() {
+  if (!state.batch || state.batch.size === 0) return;
+  state.viewSelectedOnly = !state.viewSelectedOnly;
+  pushURL();
+  if (typeof renderRolodex === 'function') renderRolodex();
+  updateBatchBar();
+}
+{
+  const vBtn = document.getElementById('batchView');
+  const vSort = document.getElementById('viewSelected');
+  if (vBtn)  vBtn.addEventListener('click', toggleViewSelectedOnly);
+  if (vSort) vSort.addEventListener('click', toggleViewSelectedOnly);
 }
 document.getElementById('batchClear').addEventListener('click', () => {
   state.batch = new Set(); saveBatch(state.batch);
+  // Auto-disengage view-only mode when the selection is cleared, otherwise
+  // we'd render an empty rolodex with no obvious way out.
+  if (state.viewSelectedOnly) {
+    state.viewSelectedOnly = false;
+    pushURL();
+    if (typeof renderRolodex === 'function') renderRolodex();
+  }
   document.querySelectorAll('.cf-card').forEach(n => n.classList.remove('picked'));
   updateBatchBar();
 });
