@@ -46572,6 +46572,43 @@ window.downloadICS = function(events, filename) {
   resize();
 })();
 
+/* ---------- Auto-cross past events as time rolls forward ----------
+   isEventPast(e) checks against new Date() at render time, so reloads always
+   show fresh state. This block keeps that fresh while the tab stays open:
+   1. A midnight tick re-renders the current view at 00:01 local — catches
+      events whose end_date was today.
+   2. A visibilitychange listener re-renders when the tab returns from hidden,
+      so a tab left idle overnight catches up immediately when the user comes
+      back to it without waiting for the next midnight tick.
+   Cheap: re-renders only if the active view actually depends on event dates
+   (events, home, or rolodex when an event-pin is active). */
+(function autoCrossPastEvents() {
+  function reRenderIfDateSensitive() {
+    if (!window.state || typeof renderAll !== 'function') return;
+    if (state.view === 'events' || state.view === 'home') {
+      renderAll();
+    } else if (state.view === 'rolodex' && state.pinnedEventId) {
+      renderAll();
+    }
+  }
+  function armNextMidnightTick() {
+    const now = new Date();
+    const nextMidnight = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate() + 1,
+      0, 1, 0, 0
+    );
+    const ms = Math.max(60_000, nextMidnight.getTime() - now.getTime());
+    setTimeout(() => {
+      reRenderIfDateSensitive();
+      armNextMidnightTick();
+    }, ms);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) reRenderIfDateSensitive();
+  });
+  armNextMidnightTick();
+})();
+
 /* ---------- View transition wrapper ---------- */
 (function() {
   const _renderAll = window.renderAll || renderAll;
