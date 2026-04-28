@@ -705,6 +705,148 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .fc.fc--type.active .count { color: var(--accent-cool); opacity: 0.95; }
 
+/* ============================================================
+   FILTER VISUAL HIERARCHY (2026-04-23)
+   ------------------------------------------------------------
+   Pre-overhaul, every chip rendered as the same bordered cream
+   rectangle on dark — no rhythm, no resting points, the eye
+   couldn't find a primary filter. This block introduces a
+   three-tier visual weight: tier chips (loud), bundles
+   (pill-preset), country/type (ghost). Section labels are
+   pulled back. Vertical breathing room between rows is
+   doubled so the panel reads as a layered composition rather
+   than a wall.
+   ============================================================ */
+
+/* Tier row — primary, taller, with a tier-color accent dot at rest. */
+.filter-row[data-cat="tier"] .fc {
+  font-size: 10.5px;
+  padding: 5px 12px;
+  letter-spacing: 0.10em;
+  font-weight: 600;
+  border-color: var(--border-primary);
+}
+.filter-row[data-cat="tier"] .fc::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 1px;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.filter-row[data-cat="tier"] .fc.fc--tier-a::before { background: var(--tier-a); }
+.filter-row[data-cat="tier"] .fc.fc--tier-b::before { background: var(--tier-b); }
+.filter-row[data-cat="tier"] .fc.fc--tier-c::before { background: var(--tier-c); }
+.filter-row[data-cat="tier"] .fc.fc--tier-d::before { background: var(--tier-d); }
+.filter-row[data-cat="tier"] .fc:hover::before { opacity: 1; transform: scale(1.15); }
+.filter-row[data-cat="tier"] .fc.active::before { opacity: 1; }
+
+/* Country & Type — ghost chips at rest. No border, no background;
+   the rest-state lets the panel breathe. Border + bg appears on hover
+   so they remain discoverably-clickable. Active state uses the existing
+   .fc.active accent unchanged. */
+.filter-row[data-cat="country"] .fc:not(.active),
+.filter-row[data-cat="type"]    .fc:not(.active) {
+  border-color: transparent;
+  background: transparent;
+  font-size: 9px;
+  padding: 3px 8px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+.filter-row[data-cat="country"] .fc:not(.active) .count,
+.filter-row[data-cat="type"]    .fc:not(.active) .count {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+.filter-row[data-cat="country"] .fc:not(.active):hover,
+.filter-row[data-cat="type"]    .fc:not(.active):hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  transform: none;
+}
+
+/* Region pills (Caribbean, Central America, Southern Cone, Andean) inherit
+   the ghost treatment so they don't pop louder than country chips. */
+.filter-row[data-cat="country"] .fc.fc--region:not(.active) .fc__region-chevron {
+  border-left-color: transparent;
+}
+
+/* Vertical breathing — the rows now sit in a layered rhythm, with bigger
+   gaps between rows so the eye gets a beat between sections. */
+.filter-stack { padding: 8px 0 4px; }
+.filter-row {
+  padding: 7px 0;
+  min-height: 32px;
+}
+.filter-row + .filter-row {
+  border-top: 1px solid var(--border-subtle);
+  border-top-style: dashed;
+  margin-top: 0;
+}
+
+/* Section labels (COUNTRY, TIER, TYPE on the left rail) — quieter, smaller,
+   farther back in the visual hierarchy so the chips themselves carry the
+   conversation. */
+.filter-row .label,
+.bundles-row__label,
+.geo-nav__label {
+  font-size: 8.5px !important;
+  letter-spacing: 0.22em !important;
+  opacity: 0.45;
+}
+.filter-row:hover > .label { opacity: 0.75; transition: opacity 200ms ease; }
+
+/* Bundles row — read as saved-presets, not co-equal filters. Pill-shaped,
+   smaller font, subtle resting bg, lighter left accent. */
+.bundles-row {
+  border-left-width: 2px;
+  background: var(--bg-elevated);
+}
+.bundle-pill {
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  border-color: var(--border-subtle);
+  background: var(--bg-secondary);
+}
+.bundle-pill:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-warm);
+}
+
+/* "Showing all 516" filter-meta line — pull it visually further down the
+   hierarchy too. It's a status line, not a filter affordance. */
+.filter-meta {
+  font-size: 9px !important;
+  opacity: 0.55;
+  padding-top: 6px;
+}
+
+/* Active-chip lift — selected filters scale slightly so the engaged state is
+   tactile, not just a color change. Stays inside the existing language: the
+   hover state already had a translateY lift; active layers a 4 % scale on top.
+   When active + hovered, both transforms compose. */
+.fc.active {
+  transform: scale(1.045);
+  transform-origin: center;
+}
+.fc.active:hover { transform: scale(1.045) translateY(-1px); }
+.bundle-pill.active {
+  transform: scale(1.045);
+  transform-origin: center;
+}
+.bundle-pill.active:hover { transform: scale(1.045) translateY(-1px); }
+@media (prefers-reduced-motion: reduce) {
+  .fc.active, .fc.active:hover,
+  .bundle-pill.active, .bundle-pill.active:hover { transform: none; }
+}
+
 /* ------------------------------------------------------------------------
    Regional country bucket pills — .fc--region
    Collapses 15+ country codes into 6-8 regional buckets. Each regional pill
