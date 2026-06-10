@@ -3206,6 +3206,19 @@ html[data-theme="light"] .cf-card.is-focused .tile {
 .deck-coll-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .deck-coll { font-family: var(--font-mono); font-size: 10.5px; border: 1px solid var(--border-primary); border-radius: 999px; padding: 3px 10px; color: var(--text-secondary); cursor: pointer; }
 .deck-coll:hover { border-color: var(--border-accent); color: var(--text-primary); }
+.deck-coll.active { border-color: var(--border-accent); color: var(--text-primary); background: var(--bg-elevated); }
+.deck-cd { margin-top: 10px; }
+.deck-cd:empty { display: none; }
+.deck-cd-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding-top: 10px; border-top: 1px solid var(--border-primary); }
+.deck-cd-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.deck-cd-meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.deck-cd-link { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--link); cursor: pointer; margin-left: auto; }
+.deck-cd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.deck-tchip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-primary); color: var(--text-secondary); cursor: pointer; }
+.deck-tchip:hover { border-color: var(--border-accent); color: var(--text-primary); }
+.deck-tchip.t-A { border-color: var(--tier-a, #d4af37); }
+.radar-coll-row.flash { animation: collFlash 2.4s ease-out; }
+@keyframes collFlash { 0% { background: var(--accent-warm-soft, rgba(201,169,106,0.25)); } 100% { background: transparent; } }
 .fresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-warm, #c9a96a); margin-right: 5px; vertical-align: 1px; }
 .cf-fresh { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-warm, #c9a96a); z-index: 3; }
 .list-row__sig { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; }
@@ -4198,15 +4211,38 @@ function renderHome() {
       return '<div class="deck-top" data-tid="' + escapeHtml(id) + '"><span class="deck-rank">' + String(i + 1).padStart(2, '0') + '</span><span class="deck-n">' + escapeHtml(t.entity_name.split('\u2014')[0].trim().slice(0, 34)) + '</span><span class="deck-score">' + Math.round(((t.actionability || {}).score) || 0) + '</span></div>';
     }).join('');
     const colls = (N90.collisions || []).slice(0, 4).map(c =>
-      '<span class="deck-coll" data-route="radar">' + escapeHtml(String(c.start_date || '').slice(5)) + ' \u00b7 ' + escapeHtml(c.short_name || c.name) + ' \u00b7 ' + c.a_count + 'A</span>').join('');
+      '<span class="deck-coll" data-eid="' + escapeHtml(c.event_id) + '">' + escapeHtml(String(c.start_date || '').slice(5)) + ' \u00b7 ' + escapeHtml(c.short_name || c.name) + ' \u00b7 ' + c.a_count + 'A</span>').join('');
     deck.innerHTML =
       '<div class="deck-grid">' +
         '<div class="deck-card"><div class="deck-h">Latest signals</div>' + (sigRows || '<div class="muted">\u2014</div>') + '</div>' +
         '<div class="deck-card"><div class="deck-h">Radar \u2014 top conversations</div>' + (top5 || '<div class="muted">\u2014</div>') + '<div class="deck-more" data-route="radar">Full radar \u2192</div></div>' +
       '</div>' +
-      '<div class="deck-card deck-colls"><div class="deck-h">Next collisions</div><div class="deck-coll-row">' + (colls || '\u2014') + '</div></div>';
+      '<div class="deck-card deck-colls"><div class="deck-h">Next collisions</div><div class="deck-coll-row">' + (colls || '\u2014') + '</div><div class="deck-cd" id="deckCollDetail"></div></div>';
     deck.querySelectorAll('[data-tid]').forEach(el => el.addEventListener('click', () => openModalById(el.dataset.tid)));
     deck.querySelectorAll('[data-route]').forEach(el => el.addEventListener('click', () => navTo(el.dataset.route)));
+    deck.querySelectorAll('.deck-coll').forEach(el => el.addEventListener('click', () => {
+      const det = document.getElementById('deckCollDetail');
+      if (!det) return;
+      const wasOpen = el.classList.contains('active');
+      deck.querySelectorAll('.deck-coll').forEach(x => x.classList.remove('active'));
+      if (wasOpen) { det.innerHTML = ''; return; }
+      el.classList.add('active');
+      const c = (N90.collisions || []).find(x => x.event_id === el.dataset.eid);
+      if (!c) return;
+      const ev = (DATA.events || []).find(x => x.event_id === c.event_id) || {};
+      const where = [ev.venue, c.city, COUNTRY_NAMES[c.country] || c.country].filter(Boolean).join(', ');
+      const chips = (c.target_ids || []).map(id => {
+        const t = byId[id]; if (!t) return '';
+        return '<span class="deck-tchip t-' + t.tier + '" data-tid="' + escapeHtml(id) + '">' + escapeHtml(t.entity_name.split('\u2014')[0].trim().slice(0, 30)) + '</span>';
+      }).join('');
+      det.innerHTML =
+        '<div class="deck-cd-head"><span class="deck-cd-name">' + escapeHtml(c.name) + '</span>' +
+        '<span class="deck-cd-meta">' + escapeHtml(c.start_date || '') + (where ? ' \u00b7 ' + escapeHtml(where) : '') + ' \u00b7 ' + c.a_count + 'A / ' + c.b_count + 'B expected</span>' +
+        '<span class="deck-cd-link" data-goto="' + escapeHtml(c.event_id) + '">Open in Radar \u2192</span></div>' +
+        '<div class="deck-cd-chips">' + chips + '</div>';
+      det.querySelectorAll('[data-tid]').forEach(x => x.addEventListener('click', () => openModalById(x.dataset.tid)));
+      det.querySelectorAll('[data-goto]').forEach(x => x.addEventListener('click', () => gotoCollision(x.dataset.goto)));
+    }));
   }
   const hs = document.getElementById('heroStamp');
   if (hs) hs.textContent = 'Live \u00b7 data ' + (DATA.last_updated || '') + ' \u00b7 Prepared for Icon Build leadership';
@@ -6833,6 +6869,18 @@ function briefSharedEvents(selected) {
   rows.sort((a, b) => (eventDateKey(a.e)).localeCompare(eventDateKey(b.e)));
   return rows;
 }
+function gotoCollision(eid) {
+  navTo('radar');
+  setTimeout(() => {
+    const row = document.getElementById('coll-' + eid);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('flash');
+      setTimeout(() => row.classList.remove('flash'), 2400);
+    }
+  }, 160);
+}
+
 function renderRadar() {
   const sub = document.getElementById('radarSub');
   const body = document.getElementById('radarBody');
@@ -6876,7 +6924,7 @@ function renderRadar() {
       return '<span class="radar-t-chip t-' + t.tier + '" data-tid="' + escapeHtml(id) + '">' + escapeHtml(t.entity_name.split('\u2014')[0].trim().slice(0, 30)) + '</span>';
     }).join('');
     const where = [c.city, c.country].filter(Boolean).join(', ');
-    return '<div class="radar-coll-row">' +
+    return '<div class="radar-coll-row" id="coll-' + escapeHtml(c.event_id) + '">' +
       '<div class="rc-date">' + escapeHtml(c.start_date) + '</div>' +
       '<div class="rc-main">' +
         '<div class="rc-name">' + escapeHtml(c.name) + (c.priority === 'must_attend' ? ' <span class="rc-must">MUST</span>' : '') + '</div>' +
