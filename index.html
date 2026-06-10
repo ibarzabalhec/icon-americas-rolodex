@@ -1429,7 +1429,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   /* dot · star · pick · name · type · country · descriptor · chevron
      star + pick sit together as a tight control pair, immediately to the
      right of the tier dot and immediately to the left of the name. */
-  grid-template-columns: 22px 22px 22px minmax(220px, 2fr) 110px 110px minmax(160px, 3fr) 28px;
+  grid-template-columns: 22px 22px 22px minmax(220px, 2fr) 110px 110px 74px minmax(160px, 3fr) 28px;
   gap: 8px; align-items: center;
   padding: 6px 14px;
   border-bottom: 1px solid var(--border-subtle);
@@ -1541,7 +1541,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .list-header {
   display: grid;
   /* match .list-row columns — dot · star · pick · name · type · country · desc · chev */
-  grid-template-columns: 22px 22px 22px minmax(220px, 2fr) 110px 110px minmax(160px, 3fr) 28px;
+  grid-template-columns: 22px 22px 22px minmax(220px, 2fr) 110px 110px 74px minmax(160px, 3fr) 28px;
   gap: 8px; align-items: center;
   padding: 7px 14px;
   background: var(--bg-elevated);
@@ -3185,6 +3185,32 @@ html[data-theme="light"] .cf-card.is-focused .tile {
 }
 
 
+
+/* ========= COMMAND DECK / FRESHNESS ========= */
+.deck { max-width: 1160px; margin: 18px auto 0; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
+.deck-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .deck-grid { grid-template-columns: 1fr; } }
+.deck-card { background: var(--bg-elevated); border: 1px solid var(--border-primary); border-radius: 10px; padding: 14px 16px; }
+.deck-h { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 9px; }
+.deck-sig { display: grid; grid-template-columns: 74px minmax(120px, 0.9fr) 1.3fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border-primary); font-size: 12px; cursor: pointer; align-items: baseline; }
+.deck-sig:last-of-type { border-bottom: none; }
+.deck-sig:hover .deck-n, .deck-top:hover .deck-n { color: var(--link-hover); }
+.deck-d { font-family: var(--font-mono); font-size: 10px; color: var(--accent-warm, #c9a96a); }
+.deck-n { color: var(--text-primary); font-weight: 600; font-size: 12px; }
+.deck-note { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-top { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border-primary); cursor: pointer; font-size: 13px; }
+.deck-top:last-of-type { border-bottom: none; }
+.deck-rank { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.deck-score { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.deck-more { margin-top: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--link); cursor: pointer; }
+.deck-coll-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.deck-coll { font-family: var(--font-mono); font-size: 10.5px; border: 1px solid var(--border-primary); border-radius: 999px; padding: 3px 10px; color: var(--text-secondary); cursor: pointer; }
+.deck-coll:hover { border-color: var(--border-accent); color: var(--text-primary); }
+.fresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-warm, #c9a96a); margin-right: 5px; vertical-align: 1px; }
+.cf-fresh { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-warm, #c9a96a); z-index: 3; }
+.list-row__sig { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; }
+.sig-none { color: var(--text-tertiary); }
+
 /* ========= RADAR ========= */
 #view-radar { max-width: 1060px; margin: 0 auto; padding: 48px 24px 96px; }
 .radar-hero h1 { font-family: var(--font-display); font-size: clamp(40px, 7vw, 72px); letter-spacing: 0.04em; margin: 0; color: var(--text-primary); }
@@ -3269,7 +3295,7 @@ html[data-theme="light"] .cf-card.is-focused .tile {
         Icon Build hospitality BD. <em>Americas subsurface</em> prospect list — sourced, scored, filterable. A matchmaking instrument for 3D-printed concrete hospitality: developers, hoteliers, architects, family offices, PE, and brokerage teams across Mexico, the Caribbean, LatAm and the US Sun Belt.
       </div>
       <div class="hero__meta">
-        <span>Edition</span><span class="v">v1.2 · April 2026</span>
+        <span>Edition</span><span class="v">v2.0 · live — weekly signal sweep</span>
         <span>Prepared by</span><span class="v">Héctor Ibarzábal · <a href="tel:+16045626160">+1.604.562.6160</a> · <a href="mailto:ibarzabalhec@gmail.com">ibarzabalhec@gmail.com</a></span>
         <span>Data</span><span class="v">icon_subsurface_claude_research.md</span>
       </div>
@@ -3284,6 +3310,8 @@ html[data-theme="light"] .cf-card.is-focused .tile {
   </div>
 
   <div class="stats" id="stats"></div>
+
+  <div class="deck" id="deck"></div>
 
   <div class="row-block">
     <h2>Legend</h2>
@@ -3384,6 +3412,8 @@ html[data-theme="light"] .cf-card.is-focused .tile {
             <span class="sort-opt" data-sort="alpha">A–Z</span>
             <span class="sort-opt" data-sort="country">Country</span>
             <span class="sort-opt" data-sort="projects">Projects</span>
+            <span class="sort-opt" data-sort="signal">Signal</span>
+            <span class="sort-opt" data-sort="action">Radar</span>
           </div>
         </div>
         <div style="display: flex; gap: 8px;">
@@ -3801,8 +3831,8 @@ function saveStarred(s) {
   catch (e) {}
 }
 function loadViewMode() {
-  try { const v = localStorage.getItem(VIEWMODE_KEY); return (v === 'list' || v === 'grid') ? v : 'grid'; }
-  catch (e) { return 'grid'; }
+  try { const v = localStorage.getItem('rolodex:viewMode:v1'); return (v === 'list' || v === 'grid') ? v : 'list'; }
+  catch (e) { return 'list'; }
 }
 function saveViewMode(v) {
   try { localStorage.setItem(VIEWMODE_KEY, v); } catch (e) {}
@@ -4108,7 +4138,9 @@ function filtered() {
     priority: (a, b) => (R[a.tier] - R[b.tier]) || (b.scores.total - a.scores.total) || a.entity_name.localeCompare(b.entity_name),
     alpha:    (a, b) => a.entity_name.localeCompare(b.entity_name),
     country:  (a, b) => (a.country + (a.region || '')).localeCompare(b.country + (b.region || '')) || R[a.tier] - R[b.tier],
-    projects: (a, b) => (b.project_count || 0) - (a.project_count || 0) || R[a.tier] - R[b.tier]
+    projects: (a, b) => (b.project_count || 0) - (a.project_count || 0) || R[a.tier] - R[b.tier],
+    signal:   (a, b) => ((latestSignalDate(b) || '')).localeCompare(latestSignalDate(a) || '') || R[a.tier] - R[b.tier],
+    action:   (a, b) => (((b.actionability || {}).score) || 0) - (((a.actionability || {}).score) || 0) || R[a.tier] - R[b.tier]
   };
   const cmp = S[state.sort] || S.priority;
   // Starred targets float to the top of every view — an overlay on the chosen sort.
@@ -4152,6 +4184,33 @@ function renderHome() {
   document.getElementById('stats').innerHTML = cards.map(([n, l]) =>
     `<div class="stat"><div class="stat__num">${n}</div><div class="stat__lab">${l}</div></div>`
   ).join('');
+  const deck = document.getElementById('deck');
+  if (deck) {
+    const N90 = DATA.next90 || {};
+    const byId = {}; DATA.targets.forEach(t => { byId[t.target_id] = t; });
+    const allSigs = [];
+    DATA.targets.forEach(t => (t.signals || []).forEach(sg => allSigs.push({ t, sg })));
+    allSigs.sort((x, y) => (String(y.sg.date || '')).localeCompare(String(x.sg.date || '')));
+    const sigRows = allSigs.slice(0, 6).map(({ t, sg }) =>
+      '<div class="deck-sig" data-tid="' + escapeHtml(t.target_id) + '"><span class="deck-d">' + escapeHtml(String(sg.date || '').slice(0, 10)) + '</span><span class="deck-n">' + escapeHtml(t.entity_name.split('\u2014')[0].trim().slice(0, 34)) + '</span><span class="deck-note">' + escapeHtml(String(sg.note || '').slice(0, 96)) + '</span></div>').join('');
+    const top5 = (N90.top15 || []).slice(0, 5).map((id, i) => {
+      const t = byId[id]; if (!t) return '';
+      return '<div class="deck-top" data-tid="' + escapeHtml(id) + '"><span class="deck-rank">' + String(i + 1).padStart(2, '0') + '</span><span class="deck-n">' + escapeHtml(t.entity_name.split('\u2014')[0].trim().slice(0, 34)) + '</span><span class="deck-score">' + Math.round(((t.actionability || {}).score) || 0) + '</span></div>';
+    }).join('');
+    const colls = (N90.collisions || []).slice(0, 4).map(c =>
+      '<span class="deck-coll" data-route="radar">' + escapeHtml(String(c.start_date || '').slice(5)) + ' \u00b7 ' + escapeHtml(c.short_name || c.name) + ' \u00b7 ' + c.a_count + 'A</span>').join('');
+    deck.innerHTML =
+      '<div class="deck-grid">' +
+        '<div class="deck-card"><div class="deck-h">Latest signals</div>' + (sigRows || '<div class="muted">\u2014</div>') + '</div>' +
+        '<div class="deck-card"><div class="deck-h">Radar \u2014 top conversations</div>' + (top5 || '<div class="muted">\u2014</div>') + '<div class="deck-more" data-route="radar">Full radar \u2192</div></div>' +
+      '</div>' +
+      '<div class="deck-card deck-colls"><div class="deck-h">Next collisions</div><div class="deck-coll-row">' + (colls || '\u2014') + '</div></div>';
+    deck.querySelectorAll('[data-tid]').forEach(el => el.addEventListener('click', () => openModalById(el.dataset.tid)));
+    deck.querySelectorAll('[data-route]').forEach(el => el.addEventListener('click', () => navTo(el.dataset.route)));
+  }
+  const hs = document.getElementById('heroStamp');
+  if (hs) hs.textContent = 'Live \u00b7 data ' + (DATA.last_updated || '') + ' \u00b7 Prepared for Icon Build leadership';
+
 
   // Hero pulse grid — animated tier density
   const pulseEl = document.getElementById('heroPulse');
@@ -4321,6 +4380,22 @@ function renderGeoNav() {
 }
 
 /* Render the zebra-striped list view. One row per target. */
+
+function latestSignalDate(t) {
+  const s = (t.signals && t.signals[0] && t.signals[0].date) || null;
+  return s ? String(s).slice(0, 10) : null;
+}
+function isFresh(t) {
+  const s = latestSignalDate(t);
+  if (!s) return false;
+  return (Date.now() - new Date(s).getTime()) < 30 * 86400 * 1000;
+}
+function sigCellHTML(t) {
+  const s = latestSignalDate(t);
+  if (!s) return '<span class="sig-none">\u2014</span>';
+  return (isFresh(t) ? '<span class="fresh-dot" title="Signal in the last 30 days"></span>' : '') + '<span class="sig-d">' + s.slice(5) + '</span>';
+}
+
 function renderListView() {
   const host = document.getElementById('listTable');
   if (!host) return;
@@ -4338,6 +4413,7 @@ function renderListView() {
     <div>Name</div>
     <div>Type</div>
     <div>Country</div>
+    <div>Signal</div>
     <div>Descriptor</div>
     <div></div>
   </div>`;
@@ -4398,6 +4474,7 @@ function renderListView() {
       <div class="list-row__name"><span class="list-row__tid">${escapeHtml(t.target_id)}</span>${nameLink}</div>
       <div class="list-row__type">${escapeHtml(type)}</div>
       <div class="list-row__country">${escapeHtml(countryLabel)}</div>
+      <div class="list-row__sig">${sigCellHTML(t)}</div>
       <div class="list-row__desc">${escapeHtml(desc)}</div>
       <div class="list-row__chev">›</div>
     </div>`);
@@ -4792,6 +4869,13 @@ function renderCoverFlow(reset) {
   scene.innerHTML = '';
   cfCards = cfArr.map((t, i) => buildCover(t, i));
   cfCards.forEach(n => scene.appendChild(n));
+  cfCards.forEach((n, i) => {
+    if (isFresh(cfArr[i])) {
+      const fd = document.createElement('div');
+      fd.className = 'cf-fresh'; fd.title = 'Signal in the last 30 days';
+      n.appendChild(fd);
+    }
+  });
   applyCoverTransforms();
   updateCfTitle();
   startEase();
